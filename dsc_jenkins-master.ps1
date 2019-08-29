@@ -34,10 +34,10 @@ Configuration JENKINS_CI
             DependsOn = "[WindowsFeature]NetFrameworkCore"
         }
 
-        # Install JDK8
-        cChocoPackageInstaller installJdk8
+        # Install JDK11
+        cChocoPackageInstaller installJdk11
         {
-            Name = "jdk8"
+            Name = "openjdk11"
             DependsOn = "[cChocoInstaller]installChoco"
         }
         
@@ -59,22 +59,22 @@ Configuration JENKINS_CI
         Script SetJavaToPath 
         {
             GetScript = {
-                return @{ Result = $env:Path }
+                return @{ Result = $ENV:Path }
             }
             SetScript = {
                 # Try to find Java bin path and force the result to string 
-                [string]$javaBinPath = gci "${Env:ProgramFiles}\Java" -r -filter java.exe | Select Directory | Select-Object -first 1 | % { $_.Directory.FullName }
+                [string]$javaBinPath = gci "${Env:ProgramFiles}\OpenJDK" -r -filter java.exe | Select Directory | Select-Object -first 1 | % { $_.Directory.FullName }
                 # Adds javaBinPath to path variable 
-                $newPathValue = $env:Path + ";"+$javaBinPath
+                $newPathValue = $ENV:Path + ";"+$javaBinPath
                 # You might need to reset your console after this 
                 [Environment]::SetEnvironmentVariable("Path", $newPathValue, [EnvironmentVariableTarget]::Machine)
                 # Add also path to current session
-                $env:Path = $newPathValue
+                $ENV:Path = $newPathValue
             }
             TestScript = {
                 # Try to find Java bin path and force the result to string 
-                [string]$javaBinPath = gci "${Env:ProgramFiles}\Java" -r -filter java.exe | Select Directory | Select-Object -first 1 | % { $_.Directory.FullName }
-                if(-not $env:Path.Contains($javaBinPath))
+                [string]$javaBinPath = gci "${Env:ProgramFiles}\OpenJDK" -r -filter java.exe | Select Directory | Select-Object -first 1 | % { $_.Directory.FullName }
+                if(-not $ENV:Path.Contains($javaBinPath))
                 {
                     # Do update
                     Return $False
@@ -82,7 +82,7 @@ Configuration JENKINS_CI
                 # Don't update
                 Return $True
             }
-            DependsOn = "[cChocoPackageInstaller]installJdk8"
+            DependsOn = "[cChocoPackageInstaller]installJdk11"
         }
         
         # Install Jenkins
@@ -91,13 +91,19 @@ Configuration JENKINS_CI
             Name = "Jenkins"
             DependsOn = "[cChocoInstaller]installChoco"
         }
-        
+
+        # Set JENKINS_HOME Environment Variable
+        Environment JENKINS_HOME 
+        {
+            Ensure = "Present"
+            Name = "JENKINS_HOME"
+            Value = (Join-Path ${ENV:ProgramFiles(x86)} "Jenkins")
+            DependsOn = "[cChocoPackageInstaller]installJenkins"
+        }
+
         Script SetJenkinsServiceArguments
         {
             SetScript = {
-                [System.Environment]::SetEnvironmentVariable('JENKINS_HOME',"${ENV:ProgramFiles(x86)}\Jenkins",[System.EnvironmentVariableTarget]::Machine)
-                $ENV:JENKINS_HOME = "${ENV:ProgramFiles(x86)}\Jenkins"
-
                 $argString = "-Xrs -Xmx"+$Using:JenkinsXmx+"m -XX:MaxPermSize="+$Using:JenkinsMaxPermSize+"m -Djenkins.install.runSetupWizard=false -Dhudson.lifecycle=hudson.lifecycle.WindowsServiceLifecycle -jar `"%BASE%\jenkins.war`" --httpPort="+$Using:JenkinsPort+" --webroot=`"%BASE%\war`""
                 Write-Verbose -Verbose "Setting jenkins service arguments to $argString"
                 
@@ -139,7 +145,7 @@ Configuration JENKINS_CI
             }
             DependsOn = "[cChocoPackageInstaller]installJenkins"
         }
-        
+
         File JenkinsAuthenticationSetup 
         {
             DestinationPath = $JenkinsInitScriptPath
@@ -151,22 +157,23 @@ Configuration JENKINS_CI
             MatchSource = $true
             DependsOn = "[cChocoPackageInstaller]installJenkins"
         }
+
         Script SetJenkinsAuthenticationUsername
         {
+            GetScript = {
+                $isReplaceable = (get-content $Using:JenkinsInitScriptPath) | % {$_ -match $Using:JenkinsUsernameTemplate } | ? { $_ -contains $true }
+                $aResult = $isReplaceable -eq $True
+                Return @{
+                    'Result' = $aResult
+                }
+            }
             SetScript = {
                 $username = $Using:JenkinsUsername
                 (Get-Content $Using:JenkinsInitScriptPath).Replace($Using:JenkinsUsernameTemplate,$username) | Set-Content $Using:JenkinsInitScriptPath
             }
-            GetScript = {
-                $containsReplacaple = (get-content $Using:JenkinsInitScriptPath) | % {$_ -match $Using:JenkinsUsernameTemplate } | ? { $_ -contains $true }
-                $aResult = $containsReplacaple -eq $True
-                Return @{
-                    'Result' = $aResult
-                }
-            }
             TestScript = {
-                $containsReplacaple = (get-content $Using:JenkinsInitScriptPath) | % {$_ -match $Using:JenkinsUsernameTemplate } | ? { $_ -contains $true }
-                if($containsReplacaple -eq $True)
+                $isReplaceable = (get-content $Using:JenkinsInitScriptPath) | % {$_ -match $Using:JenkinsUsernameTemplate } | ? { $_ -contains $true }
+                if($isReplaceable -eq $True)
                 {
                     # needs configuration
                     Return $False
@@ -174,22 +181,23 @@ Configuration JENKINS_CI
                 Return $True
             }
         }
+
         Script SetJenkinsAuthenticationPassword
         {
+            GetScript = {
+                $isReplaceable = (get-content $Using:JenkinsInitScriptPath) | % {$_ -match $Using:JenkinsPasswordTemplate } | ? { $_ -contains $true }
+                $aResult = $isReplaceable -eq $True
+                Return @{
+                    'Result' = $aResult
+                }
+            }
             SetScript = {
                 $password = $Using:JenkinsPassword
                 (Get-Content $Using:JenkinsInitScriptPath).Replace($Using:JenkinsPasswordTemplate,$password) | Set-Content $Using:JenkinsInitScriptPath 
             }
-            GetScript = {
-                $containsReplacaple = (get-content $Using:JenkinsInitScriptPath) | % {$_ -match $Using:JenkinsPasswordTemplate } | ? { $_ -contains $true }
-                $aResult = $containsReplacaple -eq $True
-                Return @{
-                    'Result' = $aResult
-                }
-            }
             TestScript = {
-                $containsReplacaple = (get-content $Using:JenkinsInitScriptPath) | % {$_ -match $Using:JenkinsPasswordTemplate } | ? { $_ -contains $true }
-                if($containsReplacaple -eq $True)
+                $isReplaceable = (get-content $Using:JenkinsInitScriptPath) | % {$_ -match $Using:JenkinsPasswordTemplate } | ? { $_ -contains $true }
+                if($isReplaceable -eq $True)
                 {
                     # needs configuration
                     Return $False
@@ -197,6 +205,7 @@ Configuration JENKINS_CI
                 Return $True
             }
         }
+
         Service JenkinsService
         {
             Name        = "Jenkins"
@@ -204,9 +213,12 @@ Configuration JENKINS_CI
             State       = "Running"
             DependsOn = "[cChocoPackageInstaller]installJenkins","[Script]SetJenkinsServiceArguments","[File]JenkinsAuthenticationSetup","[Script]SetJenkinsAuthenticationUsername","[Script]SetJenkinsAuthenticationPassword"
         } 
-        
+
         Script InstallJenkinsPlugins
         {
+            GetScript = {
+                Return @{ Result = Get-ChildItem "${ENV:ProgramFiles(x86)}\Jenkins\plugins" | Select Name }
+            }
             SetScript = {
                 $plugins = $Using:JenkinsPlugins
                 $port = $Using:JenkinsPort
@@ -248,9 +260,6 @@ Configuration JENKINS_CI
                 Restart-Service `
                     -Name Jenkins
             }
-            GetScript = {
-                Return @{ Result = Get-ChildItem "${ENV:ProgramFiles(x86)}\Jenkins\plugins" | Select Name }
-            }
             TestScript = {
                 # Sanity check to bypass weird folder does not exist problem
                 if(!(Test-Path "${ENV:ProgramFiles(x86)}\Jenkins\plugins"))
@@ -276,6 +285,7 @@ $ConfigData = @{
     @(
         @{
             NodeName = "LocalHost"
+            PSDscAllowPlainTextPassword = $true
         }
     )
 }

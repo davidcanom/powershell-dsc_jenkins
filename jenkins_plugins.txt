@@ -14,8 +14,6 @@ fxcop-runner
 git
 git-parameter
 git-tag-message
-github
-gitlab-plugin
 gravatar
 http_request
 job-dsl
@@ -26,6 +24,7 @@ parameterized-trigger
 performance
 powershell
 sonar
+sonar-quality-gates
 test-stability
 thinBackup
 timestamper
