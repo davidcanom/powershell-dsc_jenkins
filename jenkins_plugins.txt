@@ -10,7 +10,6 @@ delivery-pipeline-plugin
 dependency-check-jenkins-plugin
 email-ext
 external-monitor-job
-fxcop-runner
 git
 git-parameter
 git-tag-message
@@ -19,6 +18,10 @@ http_request
 job-dsl
 job-import-plugin
 mailer
+msbuild
+mstest
+mstestrunner
+nodejs
 nunit
 parameterized-trigger
 performance

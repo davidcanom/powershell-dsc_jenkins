@@ -2,16 +2,16 @@
 Configuration JENKINS_CI
 {
     param (
-        $JenkinsPort = 8080,
+        [string] $JenkinsPort = 8080,
         $JenkinsPlugins = @{},
-        $JenkinsUsername = "",
-        $JenkinsPassword = "",
+        [string] $JenkinsUsername = "",
+        [string] $JenkinsPassword = "",
         $JenkinsXmx = 1024,
         $JenkinsMaxPermSize = 128,
-        $InstallConfDirectory = "./",
-        $JenkinsInitScriptPath = "",
-        $JenkinsUsernameTemplate = "_jenkinsusername_",
-        $JenkinsPasswordTemplate = "_jenkinspassword_"
+        [string] $InstallConfDirectory = "./",
+        [string] $JenkinsInitScriptPath = "",
+        [string] $JenkinsUsernameTemplate = "_jenkinsusername_",
+        [string] $JenkinsPasswordTemplate = "_jenkinspassword_"
     )
     
     Import-DscResource -ModuleName 'PSDesiredStateConfiguration'
@@ -146,7 +146,7 @@ Configuration JENKINS_CI
             DependsOn = "[cChocoPackageInstaller]installJenkins"
         }
 
-        File JenkinsAuthenticationSetup 
+        File JenkinsAuthenticationSetup
         {
             DestinationPath = $JenkinsInitScriptPath
             SourcePath = (Join-Path $InstallConfDirectory "jenkins_security_realm.groovy")
@@ -212,7 +212,19 @@ Configuration JENKINS_CI
             StartupType = "Automatic"
             State       = "Running"
             DependsOn = "[cChocoPackageInstaller]installJenkins","[Script]SetJenkinsServiceArguments","[File]JenkinsAuthenticationSetup","[Script]SetJenkinsAuthenticationUsername","[Script]SetJenkinsAuthenticationPassword"
-        } 
+        }
+
+        File JenkinsPluginsFile
+        {
+            DestinationPath = (Join-Path ${ENV:JENKINS_HOME} "jenkins_plugins.txt")
+            SourcePath = (Join-Path $InstallConfDirectory "jenkins_plugins.txt")
+            Ensure = "Present"
+            Type = "File"
+            Checksum = "modifiedDate"
+            Force = $true
+            MatchSource = $true
+            DependsOn = "[cChocoPackageInstaller]installJenkins"
+        }
 
         Script InstallJenkinsPlugins
         {
@@ -226,8 +238,7 @@ Configuration JENKINS_CI
                 $username = $Using:JenkinsUsername
                 
                 # Make sure that Jenkins is in the configurated state
-                Restart-Service `
-                    -Name Jenkins
+                Restart-Service -Name Jenkins
                 Start-Sleep -s 15
                 
                 # Wait a bit for Jenkins to get online 
@@ -290,27 +301,25 @@ $ConfigData = @{
     )
 }
 
+# Set WSMan envelope size bigger
+Set-WSManInstance -ValueSet @{MaxEnvelopeSizekb = "2000"} -ResourceURI winrm/config
 
-
-$myusername = Read-Host "Give username for jenkins_user"
+$currentPath = (split-path -parent $MyInvocation.MyCommand.Definition)
+$jenkinsusername = Read-Host "Give username for jenkins_user"
 $securepwd = Read-Host -AsSecureString "Give password for jenkins_user"
 $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($securepwd)
-$mypwd = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
+$jenkinspassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
 $jenkinsInitScript = "${ENV:ProgramFiles(x86)}\Jenkins\init.groovy.d\jenkins_security_realm.groovy"
-# Set WSMan envelope size bigger, to get git.install through 
-Set-WSManInstance -ValueSet @{MaxEnvelopeSizekb = "2000"} -ResourceURI winrm/config
 # Start the actual jenkins configuration
-$jenkinsPlugins = Get-Content .\jenkins_plugins.txt 
-$currentPath = (split-path -parent $MyInvocation.MyCommand.Definition)
-
+$jenkinsPlugins = Get-Content .\jenkins_plugins.txt
 
 JENKINS_CI `
+    -InstallConfDirectory $currentPath `
+    -ConfigurationData $ConfigData `
     -JenkinsPort 8080 `
     -JenkinsPlugins $jenkinsPlugins `
-    -JenkinsUsername $myusername `
-    -JenkinsPassword $mypwd `
-    -InstallConfDirectory $currentPath `
-    -JenkinsInitScriptPath $jenkinsInitScript `
-    -ConfigurationData $ConfigData
+    -JenkinsUsername $jenkinsusername `
+    -JenkinsPassword $jenkinspassword `
+    -JenkinsInitScriptPath $jenkinsInitScript
 
 Start-DscConfiguration -Path .\JENKINS_CI -Wait -Verbose -Force
